@@ -1,7 +1,10 @@
 import uuid
 import bcrypt
-import re
 import jwt
+from ..patterns import (
+    PATTERN_UPPERCASE, PATTERN_LOWERCASE, PATTERN_NUMBER, 
+    PATTERN_SPECIAL_CHAR, PATTERN_EMAIL, PATTERN_NAME
+)
 import os
 from datetime import datetime, timedelta
 
@@ -20,11 +23,11 @@ def validate_password(password):
     if len(password) < 8:
         return False, "Password must be at least 8 characters long"
     
-    # manual regex check
-    has_upper = re.search(r"[A-Z]", password)
-    has_lower = re.search(r"[a-z]", password)
-    has_number = re.search(r"\d", password)
-    has_special = re.search(r"[@$!%*#?&]", password)
+    # centralized regex check
+    has_upper = PATTERN_UPPERCASE.search(password)
+    has_lower = PATTERN_LOWERCASE.search(password)
+    has_number = PATTERN_NUMBER.search(password)
+    has_special = PATTERN_SPECIAL_CHAR.search(password)
 
     if not has_upper:
         return False, "Password must contain at least one uppercase letter"
@@ -41,9 +44,8 @@ def validate_email(email):
     if "@" not in email:
         return False, "Invalid email: @ symbol is missing"
     
-    # regex for basic email format
-    email_regex = r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$'
-    if not re.match(email_regex, email):
+    # centralized regex check
+    if not PATTERN_EMAIL.match(email):
         return False, "Invalid email format or contains uppercase letters (must be lowercase)"
     
     return True, "Valid"
@@ -53,8 +55,8 @@ def validate_name(name_value):
     if not name_value:
         return False, "Field cannot be empty"
     
-    # regex for only letters and spaces
-    if not re.match(r"^[a-zA-Z\s]+$", name_value):
+    # centralized regex check
+    if not PATTERN_NAME.match(name_value):
         return False, "Field must contain only characters (no numbers or special characters allowed)"
     
     return True, "Valid"

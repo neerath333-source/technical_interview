@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
-from ..database import mongo
 from ..auth.utils import token_required, generate_uuid, get_audit_fields
+from .services import create_task_record, get_tenant_tasks, get_task_by_id_and_tenant, update_task_record, delete_task_record
 from datetime import datetime
 
 tasks_bp = Blueprint('tasks', __name__)
@@ -57,7 +57,8 @@ def create_task(current_user):
         "updated_by": audit_data['updated_by']
     }
 
-    mongo.db.tasks.insert_one(new_task)
+    # Use Service to create task
+    create_task_record(new_task)
     
     # Returning the created task object (excluding Mongo _id) for better visibility
     created_task_info = new_task.copy()
@@ -85,10 +86,9 @@ def get_tasks(current_user):
       200:
         description: List of tasks
     """
-    # Only find tasks that belong to the user's tenant_id
-    tenant_tasks_list = list(mongo.db.tasks.find({"tenant_id": current_user['tenant_id']}))
+    # Use Service to fetch tasks
+    tenant_tasks_list = get_tenant_tasks(current_user['tenant_id'])
     
-    # Mongo _id is not serializable easily, so we use our task_id
     tasks_to_return = []
     for task_document in tenant_tasks_list:
         tasks_to_return.append({
@@ -125,11 +125,8 @@ def get_task_by_id(current_user, task_id):
       404:
         description: Task not found
     """
-    # Ensure the task belongs to the user's tenant
-    task_document = mongo.db.tasks.find_one({
-        "task_id": task_id,
-        "tenant_id": current_user['tenant_id']
-    })
+    # Use Service to find a specific task
+    task_document = get_task_by_id_and_tenant(task_id, current_user['tenant_id'])
 
     if not task_document:
         return jsonify({"error": "Task not found or access denied"}), 404
@@ -149,7 +146,7 @@ def get_task_by_id(current_user, task_id):
 
 @tasks_bp.route('/update_task/<task_id>', methods=['PUT'])
 @token_required
-def update_task(current_user, task_id):
+def update_task_endpoint(current_user, task_id):
     """
     Update a task
     ---
@@ -178,16 +175,13 @@ def update_task(current_user, task_id):
     """
     request_data = request.get_json()
     
-    # Check if task exists and belongs to the tenant
-    existing_task = mongo.db.tasks.find_one({
-        "task_id": task_id,
-        "tenant_id": current_user['tenant_id']
-    })
+    # Verify ownership using Service
+    existing_task = get_task_by_id_and_tenant(task_id, current_user['tenant_id'])
 
     if not existing_task:
         return jsonify({"error": "Task not found"}), 404
 
-    # Update logic
+    # Prepare update logic
     update_fields_dict = {
         "updated_at": datetime.utcnow(),
         "updated_by": current_user['user_id']
@@ -200,7 +194,8 @@ def update_task(current_user, task_id):
     if 'description' in request_data:
         update_fields_dict['description'] = request_data['description']
 
-    mongo.db.tasks.update_one({"task_id": task_id}, {"$set": update_fields_dict})
+    # Use Service to update
+    update_task_record(task_id, update_fields_dict)
     
     return jsonify({
         "message": "Task updated successfully",
@@ -210,7 +205,7 @@ def update_task(current_user, task_id):
 
 @tasks_bp.route('/delete_task/<task_id>', methods=['DELETE'])
 @token_required
-def delete_task(current_user, task_id):
+def delete_task_endpoint(current_user, task_id):
     """
     Delete a task
     ---
@@ -227,10 +222,8 @@ def delete_task(current_user, task_id):
       200:
         description: Task deleted successfully
     """
-    result_status = mongo.db.tasks.delete_one({
-        "task_id": task_id,
-        "tenant_id": current_user['tenant_id']
-    })
+    # Use Service to delete
+    result_status = delete_task_record(task_id, current_user['tenant_id'])
 
     if result_status.deleted_count == 0:
         return jsonify({"error": "Task not found or access denied"}), 404

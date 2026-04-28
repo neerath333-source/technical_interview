@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
-from ..database import mongo
 from .utils import generate_uuid, hash_password, get_audit_fields, validate_email, validate_password, validate_name, check_password_hash, generate_token
+from .services import find_user_by_email, find_user_by_username_or_email, create_user, update_user_last_login
 from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
@@ -47,8 +47,8 @@ def login():
     if not email_valid:
         return jsonify({"error": email_error}), 400
 
-    # find user by email
-    user_document = mongo.db.users.find_one({"email": email})
+    # find user by email using Service
+    user_document = find_user_by_email(email)
 
     if not user_document:
         return jsonify({"error": "Invalid email or password"}), 401
@@ -66,11 +66,8 @@ def login():
     }
     access_token = generate_token(user_payload)
 
-    # update last login in audit fields
-    mongo.db.users.update_one(
-        {"_id": user_document["_id"]},
-        {"$set": {"last_login": datetime.utcnow(), "updated_at": datetime.utcnow()}}
-    )
+    # update last login in audit fields using Service
+    update_user_last_login(user_document['user_id'])
 
     return jsonify({
         "message": "Login successful",
@@ -144,13 +141,12 @@ def register():
     if not tenant_name_valid:
         return jsonify({"error": f"Tenant Name error: {tenant_name_error}"}), 400
 
-    # check if user already exists
-    existing_user = mongo.db.users.find_one({"$or": [{"username": username}, {"email": email}]})
+    # check if user already exists using Service
+    existing_user = find_user_by_username_or_email(username, email)
     if existing_user:
         return jsonify({"error": "User with this username or email already exists"}), 409
 
     # New Tenant ID logic: {tenant_name}_{uuid}
-    # Sanitize tenant name (lowercase and remove spaces)
     sanitized_tenant_name = tenant_name.lower().replace(" ", "_")
     unique_uuid = generate_uuid()
     final_tenant_id = f"{sanitized_tenant_name}_{unique_uuid}"
@@ -176,8 +172,8 @@ def register():
         "updated_by": audit_data["updated_by"]
     }
 
-    # manual storage
-    mongo.db.users.insert_one(new_user_document)
+    # manual storage using Service
+    create_user(new_user_document)
 
     return jsonify({
         "message": "User registered successfully",
