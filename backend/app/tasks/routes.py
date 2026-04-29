@@ -8,6 +8,7 @@ tasks_bp = Blueprint('tasks', __name__)
 @tasks_bp.route('/add_task', methods=['POST'])
 @token_required
 def create_task(current_user):
+    # these also for swagger tagnames and more
     """
     Create Task API
     ---
@@ -75,6 +76,7 @@ def create_task(current_user):
 @tasks_bp.route('/list_tasks', methods=['GET'])
 @token_required
 def get_tasks(current_user):
+    # these also for swagger tagnames and more
     """
     List all tasks for current tenant
     ---
@@ -107,6 +109,7 @@ def get_tasks(current_user):
 @tasks_bp.route('/view_task/<task_id>', methods=['GET'])
 @token_required
 def get_task_by_id(current_user, task_id):
+    # these also for swagger tagnames and more
     """
     Get a specific task
     ---
@@ -147,6 +150,7 @@ def get_task_by_id(current_user, task_id):
 @tasks_bp.route('/update_task/<task_id>', methods=['PUT'])
 @token_required
 def update_task_endpoint(current_user, task_id):
+  # these also for swagger tagnames and more
     """
     Update a task
     ---
