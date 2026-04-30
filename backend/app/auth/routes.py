@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify
 from .utils import generate_uuid, hash_password, get_audit_fields, validate_email, validate_password, validate_name, check_password_hash, generate_token
 from .services import find_user_by_email, find_user_by_username_or_email, create_user, update_user_last_login
+from .schemas import UserRegisterSchema, UserLoginSchema, ValidationError
 from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
-
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """
@@ -36,16 +36,17 @@ def login():
     if not request_data:
         return jsonify({"error": "No data provided"}), 400
 
-    email = request_data.get('email')
-    password = request_data.get('password')
+    # Pydantic Validation
+    try:
+        validated_data = UserLoginSchema(**request_data)
+    except ValidationError as e:
+        error_msg = e.errors()[0]['msg']
+        if error_msg.startswith('Value error, '):
+            error_msg = error_msg.replace('Value error, ', '')
+        return jsonify({"error": error_msg}), 400
 
-    if not email or not password:
-        return jsonify({"error": "Email and Password are required"}), 400
-
-    # Strong Email Validation (Check format)
-    email_valid, email_error = validate_email(email)
-    if not email_valid:
-        return jsonify({"error": email_error}), 400
+    email = validated_data.email
+    password = validated_data.password
 
     # find user by email using Service
     user_document = find_user_by_email(email)
@@ -112,34 +113,26 @@ def register():
       409:
         description: User already exists
     """
-    # manual input retrieval
+    # Get request data
     request_data = request.get_json()
     if not request_data:
         return jsonify({"error": "No data provided"}), 400
 
-    username = request_data.get('username')
-    email = request_data.get('email')
-    password = request_data.get('password')
-    tenant_name = request_data.get('tenant_name')
+    # Pydantic Validation
+    try:
+        validated_data = UserRegisterSchema(**request_data)
+    except ValidationError as e:
+        # Extract the first error message for simplicity in response
+        error_msg = e.errors()[0]['msg']
+        # Clean up 'Value error, ' prefix if present
+        if error_msg.startswith('Value error, '):
+            error_msg = error_msg.replace('Value error, ', '')
+        return jsonify({"error": error_msg}), 400
 
-    # manual validation
-    if not username or not email or not password or not tenant_name:
-        return jsonify({"error": "Missing required fields (username, email, password, tenant_name)"}), 400
-
-    # Strong Email Validation
-    email_valid, email_error = validate_email(email)
-    if not email_valid:
-        return jsonify({"error": email_error}), 400
-
-    # Strong Password Validation
-    password_valid, password_error = validate_password(password)
-    if not password_valid:
-        return jsonify({"error": password_error}), 400
-
-    # Character-only Validation for Name fields
-    tenant_name_valid, tenant_name_error = validate_name(tenant_name)
-    if not tenant_name_valid:
-        return jsonify({"error": f"Tenant Name error: {tenant_name_error}"}), 400
+    username = validated_data.username
+    email = validated_data.email
+    password = validated_data.password
+    tenant_name = validated_data.tenant_name
 
     # check if user already exists using Service
     existing_user = find_user_by_username_or_email(username, email)

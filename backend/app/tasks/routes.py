@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from ..auth.utils import token_required, generate_uuid, get_audit_fields
 from .services import create_task_record, get_tenant_tasks, get_task_by_id_and_tenant, update_task_record, delete_task_record
+from .schemas import TaskCreateSchema, TaskUpdateSchema
+from pydantic import ValidationError
 from datetime import datetime
 
 tasks_bp = Blueprint('tasks', __name__)
@@ -36,11 +38,20 @@ def create_task(current_user):
         description: Unauthorized
     """
     request_data = request.get_json()
-    title = request_data.get('title')
-    description = request_data.get('description')
+    if not request_data:
+        return jsonify({"error": "No data provided"}), 400
 
-    if not title:
-        return jsonify({"error": "Task title is required"}), 400
+    # Pydantic Validation
+    try:
+        validated_data = TaskCreateSchema(**request_data)
+    except ValidationError as e:
+        error_msg = e.errors()[0]['msg']
+        if error_msg.startswith('Value error, '):
+            error_msg = error_msg.replace('Value error, ', '')
+        return jsonify({"error": error_msg}), 400
+
+    title = validated_data.title
+    description = validated_data.description
 
     task_id = generate_uuid()
     audit_data = get_audit_fields(user_identifier=current_user['user_id'])
@@ -178,6 +189,17 @@ def update_task_endpoint(current_user, task_id):
         description: Task updated successfully
     """
     request_data = request.get_json()
+    if not request_data:
+        return jsonify({"error": "No data provided"}), 400
+
+    # Pydantic Validation
+    try:
+        validated_data = TaskUpdateSchema(**request_data)
+    except ValidationError as e:
+        error_msg = e.errors()[0]['msg']
+        if error_msg.startswith('Value error, '):
+            error_msg = error_msg.replace('Value error, ', '')
+        return jsonify({"error": error_msg}), 400
     
     # Verify ownership using Service
     existing_task = get_task_by_id_and_tenant(task_id, current_user['tenant_id'])
@@ -191,19 +213,16 @@ def update_task_endpoint(current_user, task_id):
         "updated_by": current_user['user_id']
     }
     
-    if 'title' in request_data:
-        update_fields_dict['title'] = request_data['title']
-    if 'status' in request_data:
-        update_fields_dict['status'] = request_data['status']
-    if 'description' in request_data:
-        update_fields_dict['description'] = request_data['description']
+    # Get validated fields (exclude None)
+    updates = validated_data.model_dump(exclude_none=True)
+    update_fields_dict.update(updates)
 
     # Use Service to update
     update_task_record(task_id, update_fields_dict)
     
     return jsonify({
         "message": "Task updated successfully",
-        "updated_fields": request_data,
+        "updated_fields": updates,
         "task_id": task_id
     }), 200
 

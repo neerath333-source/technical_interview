@@ -7,3 +7,4 @@ flask-cors
 flasgger
 pytest
 requests
+pydantic
